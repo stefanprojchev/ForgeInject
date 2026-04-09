@@ -1,0 +1,190 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const modelCode = `struct User: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let email: String
+    let avatarURL: URL?
+}`;
+
+const protocolsCode = `protocol NetworkServiceProtocol {
+    func get<T: Decodable>(path: String) async throws -> T
+}
+
+protocol UserRepositoryProtocol {
+    func fetchCurrentUser() async throws -> User
+    func updateProfile(name: String, email: String) async throws -> User
+}`;
+
+const networkServiceCode = `final class NetworkService: NetworkServiceProtocol {
+    private let session: URLSession
+    private let baseURL: URL
+    private let decoder = JSONDecoder()
+
+    init(baseURL: URL, session: URLSession = .shared) {
+        self.baseURL = baseURL
+        self.session = session
+    }
+
+    func get<T: Decodable>(path: String) async throws -> T {
+        let url = baseURL.appendingPathComponent(path)
+        let (data, _) = try await session.data(from: url)
+        return try decoder.decode(T.self, from: data)
+    }
+}`;
+
+const userRepositoryCode = `final class UserRepository: UserRepositoryProtocol {
+    private let network: NetworkServiceProtocol
+
+    init(network: NetworkServiceProtocol) {
+        self.network = network
+    }
+
+    func fetchCurrentUser() async throws -> User {
+        try await network.get(path: "/me")
+    }
+
+    func updateProfile(name: String, email: String) async throws -> User {
+        try await network.get(path: "/me/update?name=\\(name)&email=\\(email)")
+    }
+}`;
+
+const registrationCode = `import ForgeInject
+
+struct AppDependencies: ForgeRegisterProtocol {
+    func registerDependencies(in container: ForgeContainerProtocol) {
+        container.register(with: .singleton) { _ in
+            NetworkService(
+                baseURL: URL(string: "https://api.example.com")!
+            ) as NetworkServiceProtocol
+        }
+
+        container.register(with: .singleton) { container in
+            let network: NetworkServiceProtocol = try container.resolve()
+            return UserRepository(network: network) as UserRepositoryProtocol
+        }
+    }
+}`;
+
+const appEntryCode = `import SwiftUI
+import ForgeInject
+
+@main
+struct TaskFlowApp: App {
+    init() {
+        let container = ForgeContainer()
+        AppDependencies().registerDependencies(in: container)
+        ForgeContainer.shared = container
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ProfileView()
+        }
+    }
+}`;
+
+const viewModelCode = `import ForgeInject
+
+@Injectable
+@MainActor @Observable
+final class ProfileViewModel {
+    let userRepository: UserRepositoryProtocol
+
+    var user: User?
+    var isLoading = false
+    var errorMessage: String?
+
+    func loadProfile() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            user = try await userRepository.fetchCurrentUser()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+}`;
+
+const viewCode = `struct ProfileView: View {
+    @State private var viewModel = ProfileViewModel()
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if viewModel.isLoading {
+                    ProgressView("Loading profile...")
+                } else if let user = viewModel.user {
+                    List {
+                        HStack {
+                            Text("Name")
+                            Spacer()
+                            Text(user.name).foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Email")
+                            Spacer()
+                            Text(user.email).foregroundStyle(.secondary)
+                        }
+                    }
+                } else if let error = viewModel.errorMessage {
+                    ContentUnavailableView(
+                        "Failed to Load",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(error)
+                    )
+                }
+            }
+            .navigationTitle("Profile")
+            .task {
+                await viewModel.loadProfile()
+            }
+        }
+    }
+}`;
+---
+
+<DocsLayout title="Full SwiftUI App" section="examples">
+  <h1>Full SwiftUI App</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">A complete profile screen with async loading, error handling, and proper architecture.</p>
+
+  <h2>Model</h2>
+  <p>A shared <code>User</code> struct used across the app.</p>
+  <CodeBlock code={modelCode} title="User.swift" />
+
+  <h2>Protocols</h2>
+  <p>Contracts for the network layer and user repository. Each layer only knows about the protocol above it.</p>
+  <CodeBlock code={protocolsCode} title="Protocols.swift" />
+
+  <h2>Network Service</h2>
+  <p>A thin wrapper around <code>URLSession</code> that handles JSON decoding.</p>
+  <CodeBlock code={networkServiceCode} title="NetworkService.swift" />
+
+  <h2>User Repository</h2>
+  <p>Takes <code>NetworkServiceProtocol</code> as a constructor dependency. The container provides it at registration time.</p>
+  <CodeBlock code={userRepositoryCode} title="UserRepository.swift" />
+
+  <h2>Registration</h2>
+  <p>An <code>AppDependencies</code> struct registers both services with the <code>.singleton</code> policy. The <code>container</code> parameter in the factory closure resolves previously registered dependencies.</p>
+  <CodeBlock code={registrationCode} title="AppDependencies.swift" />
+  <CodeBlock code={appEntryCode} title="TaskFlowApp.swift" />
+
+  <h2>ViewModel</h2>
+  <p><code>@Injectable</code> generates an <code>init</code> with <code>userRepository</code> defaulted from the container. The view model never knows about <code>NetworkService</code> &mdash; that detail is hidden behind the repository protocol. In tests, pass a mock repository directly to the init.</p>
+  <CodeBlock code={viewModelCode} title="ProfileViewModel.swift" />
+
+  <h2>View</h2>
+  <p>A standard SwiftUI view observing the view model. No awareness of the DI layer.</p>
+  <CodeBlock code={viewCode} title="ProfileView.swift" />
+
+  <PageNavigation
+    prevHref="examples/modular-app"
+    prevLabel="Modular App"
+  />
+</DocsLayout>

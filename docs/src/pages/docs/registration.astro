@@ -1,0 +1,251 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+
+const registerConcrete = `container.register(with: .singleton) { _ in
+    NetworkService()
+}
+
+// Consume — with @Injectable
+@Injectable
+final class ViewModel {
+    let networkService: NetworkService
+}`;
+
+const registerProtocol = `container.register(with: .singleton) { _ in
+    NetworkService() as NetworkServiceProtocol
+}
+
+// Consume — the property's type drives resolution
+@Injectable
+final class ViewModel {
+    let networkService: NetworkServiceProtocol
+}`;
+
+const nestedDeps = `container.register(with: .singleton) { _ in
+    NetworkService() as NetworkServiceProtocol
+}
+
+container.register(with: .singleton) { container in
+    let networkService: NetworkServiceProtocol = try container.resolve()
+    return UserRepository(networkService: networkService) as UserRepositoryProtocol
+}`;
+
+const mainActorBuilder = `// For @MainActor-isolated dependencies — instance is created eagerly at registration time.
+// Requires T: Sendable since the instance crosses isolation boundaries at resolve time.
+@MainActor
+func setupContainer() {
+    container.register(with: .singleton, mainActorBuilder: { _ in
+        ProtectedDataObserver() as ProtectedDataObserving
+    })
+}`;
+
+const resolveWithTypeExample = `// Resolve by explicit type instead of type inference
+let service: TaskService = try container.resolveWithType(TaskService.self)`;
+
+const resolveAllExample = `// Returns all previously-resolved cached instances conforming to the given protocol.
+// Only returns singletons and live weak references — unresolved factories and transient
+// registrations are excluded.
+let allServices = container.resolveAll(conforming: Serviceable.self)
+
+for service in allServices {
+    service.teardown()
+}`;
+
+const resetExample = `// Clears cached singleton and weak instances but preserves factory registrations.
+// On next resolve, factories run again to create fresh instances.
+// Pass types to 'preserving' to keep specific instances alive across the reset.
+
+func handleLogout() {
+    // Keep analytics alive, reset everything else
+    container.reset(preserving: [AnalyticsServiceProtocol.self])
+}`;
+
+const catchPatternExample = `// When calling resolve() directly, errors are thrown and can be caught.
+do {
+    let service: TaskServiceProtocol = try container.resolve()
+} catch let error as ForgeContainerError {
+    switch error {
+    case .missingFactoryMethod(let type):
+        print("No factory registered for \\(type)")
+    case .typeMismatch(let type):
+        print("Factory exists but returned wrong type for \\(type)")
+    }
+}`;
+
+const typeMismatch = `// Registered as protocol
+container.register(with: .singleton) { _ in
+    NetworkService() as NetworkServiceProtocol
+}
+
+// Will crash at runtime — registered type is NetworkServiceProtocol, not NetworkService
+@Injectable
+final class ViewModel {
+    let networkService: NetworkService
+}`;
+
+const transientPolicy = `// New instance every time the dependency is resolved
+container.register(with: .transient) { _ in
+    FormValidator()
+}`;
+
+const singletonPolicy = `// Single shared instance for the app's lifetime
+container.register(with: .singleton) { _ in
+    DatabaseService() as DatabaseServiceProtocol
+}`;
+
+const weakPolicy = `// Shared while at least one consumer holds a reference.
+// Recreated after all references are released.
+container.register(with: .weak) { _ in
+    ImageCache() as ImageCacheProtocol
+}`;
+
+const mixedPolicies = `struct AppDependencies: ForgeRegisterProtocol {
+    func registerDependencies(in container: ForgeContainerProtocol) {
+        // Singleton — lives forever
+        container.register(with: .singleton) { _ in
+            NetworkService() as NetworkServiceProtocol
+        }
+
+        // Transient — new instance each time
+        container.register(with: .transient) { _ in
+            FormValidator() as FormValidatorProtocol
+        }
+
+        // Weak — shared while held
+        container.register(with: .weak) { _ in
+            ImageCache() as ImageCacheProtocol
+        }
+    }
+}`;
+---
+
+<DocsLayout title="Registration" section="docs">
+  <h1>Registration</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Register types, configure retain policies, and handle resolution errors.</p>
+
+  <h2>Concrete vs Protocol</h2>
+  <p>You can register either a concrete type or cast the return value to a protocol. <strong>Always prefer protocols</strong> — they give you testability and hide implementation details from consumers.</p>
+  <CodeBlock code={registerConcrete} title="Concrete (not recommended)" />
+  <CodeBlock code={registerProtocol} title="Protocol (recommended)" />
+
+  <h3>Why protocols</h3>
+  <ul>
+    <li><strong>Abstractions</strong> — consumers depend on interfaces, not implementations</li>
+    <li><strong>Testability</strong> — swap real implementations for mocks without changing call sites</li>
+    <li><strong>Module boundaries</strong> — modules expose protocols, not concrete types</li>
+  </ul>
+
+  <h2>Nested Dependencies</h2>
+  <p>Use the <code>container</code> parameter in the builder closure to resolve other dependencies. Registration order does not matter — dependencies are resolved lazily at access time.</p>
+  <CodeBlock code={nestedDeps} />
+
+  <h2>Type Matching</h2>
+  <p class="rounded-lg border border-red-500/50 bg-red-500/5 p-4 text-sm">
+    <strong>Important:</strong> The type you resolve must match the type you registered. If you register as a protocol, every consumer must resolve as that protocol.
+  </p>
+  <CodeBlock code={typeMismatch} title="This will crash at runtime" />
+
+  <h2>@MainActor Registration</h2>
+  <p>Some dependencies have <code>@MainActor</code>-isolated initializers (UIKit observers, view-related services). Use the <code>mainActorBuilder</code> variant to register them. The instance is created <strong>eagerly at registration time</strong>, then stored for future resolves.</p>
+  <CodeBlock code={mainActorBuilder} />
+
+  <h2>Resolve by Explicit Type</h2>
+  <p>When type inference is insufficient (e.g., you have <code>Any</code> in hand), use <code>resolveWithType(_:)</code>.</p>
+  <CodeBlock code={resolveWithTypeExample} />
+
+  <h2>Resolve All Conforming Instances</h2>
+  <p>Retrieve every cached instance that conforms to a given protocol. Only returns singletons and live weak references — unresolved factories and transient registrations are excluded.</p>
+  <CodeBlock code={resolveAllExample} />
+
+  <h2>Resetting the Container</h2>
+  <p>Clear cached singleton and weak instances while preserving factory registrations. Ideal for logout flows where you want to tear down user-scoped state without re-registering everything.</p>
+  <CodeBlock code={resetExample} />
+
+  <h2>Error Handling</h2>
+  <p>ForgeInject uses <code>ForgeContainerError</code> to communicate resolution failures. The macros crash with <code>fatalError</code> on unresolved types — this is intentional so bugs surface immediately during development rather than silently failing in production.</p>
+
+  <h3><code>missingFactoryMethod</code></h3>
+  <p>Thrown when you try to resolve a type that was never registered. This usually means you forgot to add it to your <code>ForgeRegisterProtocol</code> struct.</p>
+
+  <h3><code>typeMismatch</code></h3>
+  <p>Thrown when a factory exists for the key but its return value cannot be cast to the requested type. Happens when you register a concrete type but resolve as a protocol, or vice versa.</p>
+
+  <h3>Catching Errors</h3>
+  <p>When calling <code>container.resolve()</code> directly (outside the macros), both error cases can be pattern-matched:</p>
+  <CodeBlock code={catchPatternExample} />
+
+  <p class="rounded-lg border border-border bg-muted/50 p-4 text-sm">
+    <strong>Tip:</strong> Inside macros, resolution failures become <code>fatalError</code>. Use direct <code>try</code>/<code>catch</code> only when calling <code>container.resolve()</code> yourself — for example, when implementing conditional resolution or retry logic.
+  </p>
+
+  <h2>Retain Policies</h2>
+  <p>Control how long resolved instances live with three retain policies. Always specify the policy explicitly — the parameter-less <code>register(builder:)</code> convenience defaults to <code>.transient</code>.</p>
+
+  <h3><code>.transient</code></h3>
+  <p>A new instance is created every time the dependency is resolved. Use for stateful, short-lived objects like form validators or formatters.</p>
+  <CodeBlock code={transientPolicy} />
+
+  <h3><code>.singleton</code></h3>
+  <p>One shared instance is created on first resolve and retained for the container's lifetime. Use for app-wide services — networking, databases, analytics.</p>
+  <CodeBlock code={singletonPolicy} />
+
+  <h3><code>.weak</code></h3>
+  <p>A shared instance is returned while at least one consumer holds a strong reference. Once all references are released, the next resolve creates a fresh instance. Use for caches or flow-scoped coordinators.</p>
+  <CodeBlock code={weakPolicy} />
+
+  <h3>Quick Reference</h3>
+  <div class="overflow-x-auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>Policy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>App-wide service (networking, database, analytics)</td>
+          <td><code>.singleton</code></td>
+        </tr>
+        <tr>
+          <td>Stateless utility or per-use object (form validator, formatter)</td>
+          <td><code>.transient</code></td>
+        </tr>
+        <tr>
+          <td>Shared cache that can be freed under memory pressure</td>
+          <td><code>.weak</code></td>
+        </tr>
+        <tr>
+          <td>Flow coordinator shared across a navigation stack</td>
+          <td><code>.weak</code></td>
+        </tr>
+        <tr>
+          <td>Per-screen view model</td>
+          <td><code>.transient</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Mixing Policies</h3>
+  <p>Different registrations can use different policies. Pick the right one for each dependency.</p>
+  <CodeBlock code={mixedPolicies} title="AppDependencies.swift" />
+
+  <h2>Best Practices</h2>
+  <ul>
+    <li><strong>Register as protocols</strong> — always cast with <code>as SomeProtocol</code> in the builder closure.</li>
+    <li><strong>Set <code>ForgeContainer.shared</code> once at app launch</strong>, before any <code>@Injectable</code> type is constructed.</li>
+    <li><strong>Use <code>.singleton</code> for services, <code>.transient</code> for view models</strong> — view models should not share state across screens.</li>
+    <li><strong>Don't register <code>@MainActor</code> classes without <code>mainActorBuilder</code></strong> — otherwise you'll race the main actor during construction.</li>
+    <li><strong>Builder closures are <code>@Sendable</code></strong> — don't capture mutable state. Use <code>Mutex</code> or <code>OSAllocatedUnfairLock</code> if you need mutable state inside a builder.</li>
+  </ul>
+
+  <PageNavigation
+    prevHref="docs/macros"
+    prevLabel="Macros"
+    nextHref="docs/modular-registration"
+    nextLabel="Modular Registration"
+  />
+</DocsLayout>

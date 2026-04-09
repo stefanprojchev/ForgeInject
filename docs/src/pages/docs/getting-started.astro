@@ -1,0 +1,162 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/starwind/tabs";
+
+const spmDeps = `dependencies: [
+    .package(url: "https://github.com/stefanprojchev/ForgeInject.git", from: "1.0.0")
+]`;
+
+const spmTarget = `targets: [
+    .target(
+        name: "YourApp",
+        dependencies: ["ForgeInject"]
+    )
+]`;
+
+const cliCommand = `swift package add-dependency https://github.com/stefanprojchev/ForgeInject.git --from 1.0.0`;
+
+const appDependencies = `import ForgeInject
+
+struct AppDependencies: ForgeRegisterProtocol {
+    func registerDependencies(in container: ForgeContainerProtocol) {
+        container.register(with: .singleton) { _ in
+            GreetingService() as GreetingServiceProtocol
+        }
+    }
+}`;
+
+const swiftuiSetup = `import SwiftUI
+import ForgeInject
+
+@main
+struct TaskFlowApp: App {
+    init() {
+        let container = ForgeContainer()
+        AppDependencies().registerDependencies(in: container)
+        ForgeContainer.shared = container
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            GreetingView()
+        }
+    }
+}`;
+
+const uikitSetup = `import UIKit
+import ForgeInject
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        let container = ForgeContainer()
+        AppDependencies().registerDependencies(in: container)
+        ForgeContainer.shared = container
+        return true
+    }
+}`;
+
+const injectableExample = `import ForgeInject
+
+@Injectable
+@Observable
+final class GreetingViewModel {
+    let greetingService: GreetingServiceProtocol
+
+    var message = ""
+
+    func sayHello() {
+        message = greetingService.greet(name: "World")
+    }
+}`;
+
+const productionVsTest = `// Production — zero-arg init resolves from ForgeContainer.shared
+let viewModel = GreetingViewModel()
+
+// Tests — pass a mock directly, no container touching
+let viewModel = GreetingViewModel(greetingService: MockGreetingService())`;
+---
+
+<DocsLayout title="Getting Started" section="docs">
+  <h1>Getting Started</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Install ForgeInject, register your first dependency, and resolve it with <code>@Injectable</code>.</p>
+
+  <h2>Requirements</h2>
+  <ul>
+    <li>iOS 18+ / macOS 15+</li>
+    <li>Swift 6.3+ (Xcode 26 or later)</li>
+  </ul>
+
+  <h2>Installation</h2>
+
+  <Tabs defaultValue="xcode" syncKey="install" class="not-prose my-6">
+    <TabsList>
+      <TabsTrigger value="xcode">Xcode UI</TabsTrigger>
+      <TabsTrigger value="package-swift">Package.swift</TabsTrigger>
+      <TabsTrigger value="cli">Swift CLI</TabsTrigger>
+    </TabsList>
+    <TabsContent value="xcode">
+      <div class="mt-4 space-y-2 text-[15px] text-foreground">
+        <ol class="list-decimal space-y-1.5 pl-5">
+          <li>Open your project in Xcode.</li>
+          <li>Go to <strong>File &rarr; Add Package Dependencies&hellip;</strong></li>
+          <li>Paste the repository URL: <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">https://github.com/stefanprojchev/ForgeInject.git</code></li>
+          <li>Set the version rule to <strong>Up to Next Major</strong> from <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">1.0.0</code>.</li>
+          <li>Select your app target and click <strong>Add Package</strong>.</li>
+        </ol>
+      </div>
+    </TabsContent>
+    <TabsContent value="package-swift">
+      <CodeBlock code={spmDeps} title="Package.swift — dependencies" />
+      <CodeBlock code={spmTarget} title="Package.swift — target" />
+    </TabsContent>
+    <TabsContent value="cli">
+      <CodeBlock code={cliCommand} lang="bash" title="Terminal" />
+    </TabsContent>
+  </Tabs>
+
+  <h2>Register Dependencies</h2>
+  <p>Create a struct conforming to <code>ForgeRegisterProtocol</code> to hold your registrations. This separates registration logic from your app entry point and scales cleanly as your app grows.</p>
+  <CodeBlock code={appDependencies} title="AppDependencies.swift" />
+
+  <p>Initialize the container at app launch and call your registration struct:</p>
+
+  <Tabs defaultValue="swiftui" syncKey="platform" class="not-prose my-6">
+    <TabsList>
+      <TabsTrigger value="swiftui">SwiftUI</TabsTrigger>
+      <TabsTrigger value="uikit">UIKit</TabsTrigger>
+    </TabsList>
+    <TabsContent value="swiftui">
+      <CodeBlock code={swiftuiSetup} title="TaskFlowApp.swift" />
+    </TabsContent>
+    <TabsContent value="uikit">
+      <CodeBlock code={uikitSetup} title="AppDelegate.swift" />
+    </TabsContent>
+  </Tabs>
+
+  <p class="rounded-lg border border-border bg-muted/50 p-4 text-sm">
+    <strong>Set once:</strong> <code>ForgeContainer.shared</code> can only be set once per app launch. Subsequent non-nil assignments trigger a precondition failure.
+  </p>
+
+  <h2>Consume Dependencies</h2>
+  <p>Apply <code>@Injectable</code> to any class, struct, or actor with <code>let</code> stored properties. The macro generates a matching <code>init</code> where each parameter defaults to <code>ForgeContainer.shared</code>'s resolved value.</p>
+  <CodeBlock code={injectableExample} title="GreetingViewModel.swift" />
+
+  <h2>Production vs Tests</h2>
+  <p>Because the generated init accepts explicit arguments, tests can swap mocks in without touching the container at all.</p>
+  <CodeBlock code={productionVsTest} />
+
+  <p class="rounded-lg border border-border bg-muted/50 p-4 text-sm">
+    <strong>Next:</strong> ForgeInject ships three macros — <code>@Injectable</code>, <code>@Inject</code>, and <code>#inject()</code> — each suited to a different scenario. See the <a href="./macros">Macros</a> page to learn when to use which.
+  </p>
+
+  <PageNavigation
+    nextHref="docs/macros"
+    nextLabel="Macros"
+  />
+</DocsLayout>

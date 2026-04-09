@@ -1,0 +1,197 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import PageNavigation from "../../components/PageNavigation.astro";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/starwind/tabs";
+
+const mockDefinitions = `final class MockNetworkService: NetworkServiceProtocol {
+    var fetchResult: Result<Data, Error> = .success(Data())
+
+    func fetch(_ endpoint: String) async throws -> Data {
+        try fetchResult.get()
+    }
+}
+
+final class MockUserRepository: UserRepositoryProtocol {
+    var stubbedUser: User?
+
+    func fetchCurrentUser() async throws -> User {
+        guard let user = stubbedUser else { throw MockError.notFound }
+        return user
+    }
+}`;
+
+const viewModelUnderTest = `@Injectable
+final class ProfileViewModel {
+    let networkService: NetworkServiceProtocol
+    let repository: UserRepositoryProtocol
+
+    private(set) var state: LoadState = .idle
+
+    func loadProfile() async {
+        state = .loading
+        do {
+            let user = try await repository.fetchCurrentUser()
+            let data = try await networkService.fetch("/profile/\\(user.id)")
+            state = .loaded
+        } catch {
+            state = .failed(error)
+        }
+    }
+}`;
+
+const injectableTest = `@Test
+func profileLoadsSuccessfully() async {
+    let mockNetwork = MockNetworkService()
+    mockNetwork.fetchResult = .success(profileData)
+
+    let mockRepository = MockUserRepository()
+    mockRepository.stubbedUser = User(id: "u-1", name: "Alice")
+
+    // Pass mocks directly via the generated init
+    let viewModel = ProfileViewModel(
+        networkService: mockNetwork,
+        repository: mockRepository
+    )
+
+    await viewModel.loadProfile()
+
+    #expect(viewModel.state == .loaded)
+}`;
+
+const injectableTestXC = `func testProfileLoadsSuccessfully() async {
+    let mockNetwork = MockNetworkService()
+    mockNetwork.fetchResult = .success(profileData)
+
+    let mockRepository = MockUserRepository()
+    mockRepository.stubbedUser = User(id: "u-1", name: "Alice")
+
+    let viewModel = ProfileViewModel(
+        networkService: mockNetwork,
+        repository: mockRepository
+    )
+
+    await viewModel.loadProfile()
+
+    XCTAssertEqual(viewModel.state, .loaded)
+}`;
+
+const containerPerTestSwift = `@Suite(.serialized)
+struct ProfileTests {
+    init() {
+        // Fresh container per suite — use .serialized to avoid races on the global shared.
+        let container = ForgeContainer()
+        container.register(with: .singleton) { _ in
+            MockNetworkService() as NetworkServiceProtocol
+        }
+        container.register(with: .singleton) { _ in
+            MockUserRepository() as UserRepositoryProtocol
+        }
+        ForgeContainer.shared = container
+    }
+
+    deinit {
+        ForgeContainer.shared = nil
+    }
+
+    @Test
+    func usesContainerMocks() async {
+        let viewModel = ProfileViewModel()  // @Injectable default-resolves from container
+        await viewModel.loadProfile()
+        #expect(viewModel.state == .loaded)
+    }
+}`;
+
+const containerPerTestXC = `class ProfileTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        let container = ForgeContainer()
+        container.register(with: .singleton) { _ in
+            MockNetworkService() as NetworkServiceProtocol
+        }
+        container.register(with: .singleton) { _ in
+            MockUserRepository() as UserRepositoryProtocol
+        }
+        ForgeContainer.shared = container
+    }
+
+    override func tearDown() {
+        ForgeContainer.shared = nil
+        super.tearDown()
+    }
+
+    func testUsesContainerMocks() async {
+        let viewModel = ProfileViewModel()
+        await viewModel.loadProfile()
+        XCTAssertEqual(viewModel.state, .loaded)
+    }
+}`;
+---
+
+<DocsLayout title="Testing" section="docs">
+  <h1>Testing</h1>
+  <p class="text-lg text-muted-foreground mt-1 mb-8">Two approaches: constructor injection (preferred) or container-based mocking.</p>
+
+  <h2>Creating Mocks</h2>
+  <p>Create mock classes that conform to the same protocols you registered. Control their behavior with simple properties.</p>
+  <CodeBlock code={mockDefinitions} />
+
+  <h2>Example Subject</h2>
+  <p>A typical <code>@Injectable</code> view model that depends on two services:</p>
+  <CodeBlock code={viewModelUnderTest} />
+
+  <h2>Approach 1: Constructor Injection (preferred)</h2>
+  <p>Because <code>@Injectable</code> generates a matching <code>init</code>, tests pass mocks directly as arguments — no container, no global state, no setup/teardown.</p>
+
+  <Tabs defaultValue="swift-testing" syncKey="test-framework" class="not-prose my-6">
+    <TabsList>
+      <TabsTrigger value="swift-testing">Swift Testing</TabsTrigger>
+      <TabsTrigger value="xctest">XCTest</TabsTrigger>
+    </TabsList>
+    <TabsContent value="swift-testing">
+      <CodeBlock code={injectableTest} />
+    </TabsContent>
+    <TabsContent value="xctest">
+      <CodeBlock code={injectableTestXC} />
+    </TabsContent>
+  </Tabs>
+
+  <p class="rounded-lg border border-border bg-muted/50 p-4 text-sm">
+    <strong>Why this is preferred:</strong> no shared state between tests, no race conditions on <code>ForgeContainer.shared</code>, and the test clearly shows which dependencies the subject actually uses.
+  </p>
+
+  <h2>Approach 2: Container-Based Mocking</h2>
+  <p>When you can't use constructor injection — typically because the subject uses <code>@Inject</code> or <code>#inject()</code> instead of <code>@Injectable</code> — set up a test container and point <code>ForgeContainer.shared</code> at it.</p>
+
+  <p class="rounded-lg border border-red-500/50 bg-red-500/5 p-4 text-sm">
+    <strong>Important:</strong> <code>ForgeContainer.shared</code> enforces set-once-per-app semantics via precondition. In tests, this means you must either (a) mark suites touching <code>shared</code> with <code>.serialized</code> or (b) clear <code>shared</code> to <code>nil</code> in teardown before the next test sets it.
+  </p>
+
+  <Tabs defaultValue="swift-testing" syncKey="test-framework" class="not-prose my-6">
+    <TabsList>
+      <TabsTrigger value="swift-testing">Swift Testing</TabsTrigger>
+      <TabsTrigger value="xctest">XCTest</TabsTrigger>
+    </TabsList>
+    <TabsContent value="swift-testing">
+      <CodeBlock code={containerPerTestSwift} />
+    </TabsContent>
+    <TabsContent value="xctest">
+      <CodeBlock code={containerPerTestXC} />
+    </TabsContent>
+  </Tabs>
+
+  <h2>Best Practices</h2>
+  <ul>
+    <li><strong>Prefer <code>@Injectable</code> for new code</strong> — constructor injection gives you the cleanest test story with zero container gymnastics.</li>
+    <li><strong>Serialize tests that touch <code>ForgeContainer.shared</code></strong> — use <code>@Suite(.serialized)</code> (Swift Testing) or one-at-a-time execution (XCTest).</li>
+    <li><strong>Always clear <code>shared = nil</code> in teardown</strong> — otherwise the next test that tries to set it will crash with the set-once precondition.</li>
+    <li><strong>Mock protocols, not concrete classes</strong> — if you catch yourself mocking a concrete class, register it as a protocol instead.</li>
+  </ul>
+
+  <PageNavigation
+    prevHref="docs/modular-registration"
+    prevLabel="Modular Registration"
+    nextHref="examples/basic-app"
+    nextLabel="Basic App"
+  />
+</DocsLayout>
