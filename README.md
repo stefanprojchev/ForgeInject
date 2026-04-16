@@ -8,8 +8,6 @@ Dependency injection for iOS with constructor and property wrapper support.
 ![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 [![Release](https://img.shields.io/github/v/release/stefanprojchev/ForgeInject)](https://github.com/stefanprojchev/ForgeInject/releases)
 
-📖 **[Full documentation →](https://stefanprojchev.github.io/ForgeInject/)**
-
 ---
 
 ForgeInject is a macro-based dependency injection library for iOS. It gives you three ways to resolve dependencies — one is probably the right fit for every scenario you'll encounter.
@@ -158,7 +156,7 @@ struct RequestHandler {
 }
 ```
 
-See the **[Macros documentation](https://stefanprojchev.github.io/ForgeInject/docs/macros/)** for when to use which.
+See the Macros section above for when to use which.
 
 ## Retain policies
 
@@ -178,14 +176,6 @@ container.register(with: .weak) { _ in
     ImageCache() as ImageCacheProtocol
 }
 ```
-
-## Documentation
-
-- **[Getting Started](https://stefanprojchev.github.io/ForgeInject/docs/getting-started/)** — install, register, resolve
-- **[Macros](https://stefanprojchev.github.io/ForgeInject/docs/macros/)** — `@Injectable`, `@Inject`, `#inject()` in depth
-- **[Registration](https://stefanprojchev.github.io/ForgeInject/docs/registration/)** — protocols, nested deps, retain policies, error handling
-- **[Modular Registration](https://stefanprojchev.github.io/ForgeInject/docs/modular-registration/)** — feature-based organization
-- **[Testing](https://stefanprojchev.github.io/ForgeInject/docs/testing/)** — mock strategies with Swift Testing and XCTest
 
 ## The Forge Family
 
