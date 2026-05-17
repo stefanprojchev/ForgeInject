@@ -18,7 +18,7 @@ import os
 /// region semantics — appropriate for a DI container that intentionally erases types.
 public final class ForgeContainer: ForgeContainerProtocol, Sendable {
 
-    // MARK: - Shared
+    // MARK: - Static
 
     private static let _shared = OSAllocatedUnfairLock<ForgeContainerProtocol?>(initialState: nil)
 
@@ -39,11 +39,11 @@ public final class ForgeContainer: ForgeContainerProtocol, Sendable {
         }
     }
 
-    // MARK: - Properties
+    // MARK: - Dependencies
 
     private let state = OSAllocatedUnfairLock<ContainerState>(initialState: ContainerState())
 
-    // MARK: - Initialization
+    // MARK: - Init
 
     public init() {}
 

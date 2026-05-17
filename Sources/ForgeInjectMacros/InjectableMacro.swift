@@ -9,6 +9,8 @@ import SwiftDiagnostics
 /// zero-arg; tests can swap in mocks via the generated init.
 public struct InjectableMacro: MemberMacro {
 
+    // MARK: - Implementation
+
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
@@ -50,7 +52,7 @@ public struct InjectableMacro: MemberMacro {
         ]
     }
 
-    // MARK: - Helpers
+    // MARK: - Private
 
     private struct InjectableProperty {
         let name: String
@@ -92,18 +94,5 @@ public struct InjectableMacro: MemberMacro {
         }
 
         return result
-    }
-}
-
-// MARK: - Errors
-
-enum InjectableMacroError: Error, CustomStringConvertible {
-    case unsupportedDeclaration
-
-    var description: String {
-        switch self {
-        case .unsupportedDeclaration:
-            "@Injectable can only be applied to a class, struct, or actor."
-        }
     }
 }

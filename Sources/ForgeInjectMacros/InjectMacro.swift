@@ -8,7 +8,7 @@ import SwiftDiagnostics
 /// and `PeerMacro` (adds the backing storage as a sibling declaration).
 public struct InjectMacro: AccessorMacro, PeerMacro {
 
-    // MARK: - PeerMacro: generates the backing storage
+    // MARK: - Implementation
 
     public static func expansion(
         of node: AttributeSyntax,
@@ -42,8 +42,6 @@ public struct InjectMacro: AccessorMacro, PeerMacro {
             ]
         }
     }
-
-    // MARK: - AccessorMacro: replaces the stored property with a computed get
 
     public static func expansion(
         of node: AttributeSyntax,
@@ -83,7 +81,7 @@ public struct InjectMacro: AccessorMacro, PeerMacro {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Private
 
     private struct ParsedProperty {
         let name: String
@@ -134,33 +132,5 @@ public struct InjectMacro: AccessorMacro, PeerMacro {
             return true
         }
         return boolLiteral.literal.tokenKind == .keyword(.true)
-    }
-}
-
-// MARK: - Errors
-
-enum InjectMacroError: Error, CustomStringConvertible {
-    case notAVariable
-    case requiresVar
-    case singleBindingRequired
-    case invalidPattern
-    case missingTypeAnnotation
-    case unexpectedInitializer
-
-    var description: String {
-        switch self {
-        case .notAVariable:
-            "@Inject can only be applied to variable declarations."
-        case .requiresVar:
-            "@Inject requires `var`, not `let`. Use `@Inject var name: Type`."
-        case .singleBindingRequired:
-            "@Inject must be applied to a single property declaration."
-        case .invalidPattern:
-            "@Inject requires a simple property name (e.g. `var database: Database`)."
-        case .missingTypeAnnotation:
-            "@Inject requires an explicit type annotation, e.g. `@Inject var database: Database`."
-        case .unexpectedInitializer:
-            "@Inject properties must not have an initializer; the value is resolved from the container."
-        }
     }
 }
